@@ -21,7 +21,6 @@ VALID_MP4_BOXES = {
 }
 
 def comprobar_imagen(datos_bytes):
-    """Verifica si los bytes corresponden a una imagen JPEG válida (de comprobador.py)."""
     try:
         with Image.open(io.BytesIO(datos_bytes)) as img:
             img.verify()
@@ -31,7 +30,6 @@ def comprobar_imagen(datos_bytes):
 
 
 def buscar_todas_posiciones(data, patron):
-    """Encuentra todas las posiciones de un patrón en los datos binarios usando .find()."""
     posiciones = []
     pos = 0
     while True:
@@ -47,11 +45,9 @@ print("=== Leyendo disk.img ===")
 with open("disk.img", "rb") as f:
     data = f.read()
 
-print(f"Tamaño del disco: {len(data)} bytes")
 
-# =====================================================================
-# 1. EXTRACCIÓN DE MP4 (de lector.py usando find)
-# =====================================================================
+# EXTRACCIÓN DE MP4 
+
 print("\n--- Buscando videos MP4 ---")
 mp4_positions = buscar_todas_posiciones(data, MAGIC_MP4)
 mp4_starts = []
@@ -91,21 +87,17 @@ for ftyp_pos in mp4_positions:
         print(f"[MP4] Video guardado: {ruta_salida} ({len(datos_video)} bytes)")
         mp4_count += 1
 
-# =====================================================================
-# 2. EXTRACCIÓN Y COMPROBACIÓN DE IMÁGENES JPEG COMPLETAS EN 4K (usando find)
-# =====================================================================
-print("\n--- Buscando etiquetas de inicio y fin de JPEG con .find() ---")
+# EXTRACCIÓN Y COMPROBACIÓN DE IMÁGENES JPEG COMPLETAS
+print("\n--- Buscando etiquetas de inicio y fin de JPEG ---")
 jpeg_starts_raw = buscar_todas_posiciones(data, MAGIC_JPEG_START)
 jpeg_ends = buscar_todas_posiciones(data, MAGIC_JPEG_END)
 
-# Filtramos inicios principales (saltando los que pertenecen a miniaturas dentro de bloques EXIF/APP)
 inicios_principales = []
 cursor = 0
 for s in jpeg_starts_raw:
     if s < cursor:
         continue
     inicios_principales.append(s)
-    # Si contiene cabecera APP (APP0-APP15: 0xE0-0xEF), el bloque de metadatos abarca hasta s + 4 + app_len
     if s + 6 <= len(data) and 0xe0 <= data[s+3] <= 0xef:
         app_len = int.from_bytes(data[s+4:s+6], "big")
         cursor = s + 4 + app_len
@@ -113,21 +105,17 @@ for s in jpeg_starts_raw:
 print(f"Inicios principales de JPEG: {len(inicios_principales)}")
 print(f"Finales de JPEG encontrados: {len(jpeg_ends)}")
 
-# Lista de límites de archivos para no desbordar al siguiente archivo
 todos_limites = sorted(inicios_principales + mp4_starts + [len(data)])
 
 img_count = 0
 for start in inicios_principales:
-    # Límite superior: siguiente archivo o fin de disco
     next_limit = [lim for lim in todos_limites if lim > start][0]
 
-    # Para obtener la foto completa y no la miniatura, el final debe estar después del bloque EXIF/APP
     min_end = start
     if start + 6 <= len(data) and 0xe0 <= data[start+3] <= 0xef:
         app_len = int.from_bytes(data[start+4:start+6], "big")
         min_end = start + 4 + app_len
 
-    # Candidatos entre min_end y next_limit evaluados en orden inverso (del mayor al menor)
     candidatos_ends = [e for e in jpeg_ends if min_end <= e < next_limit]
 
     for end in reversed(candidatos_ends):
